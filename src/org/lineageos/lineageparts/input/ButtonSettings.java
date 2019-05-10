@@ -17,6 +17,7 @@
 
 package org.lineageos.lineageparts.input;
 
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.ComponentName;
 import android.content.ContentResolver;
@@ -25,8 +26,16 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.BitmapDrawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.os.UserHandle;
 import android.provider.Settings;
@@ -35,6 +44,7 @@ import android.support.v7.preference.ListPreference;
 import android.support.v7.preference.Preference;
 import android.support.v7.preference.PreferenceCategory;
 import android.support.v7.preference.PreferenceScreen;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.Display;
 import android.view.DisplayInfo;
@@ -51,6 +61,10 @@ import org.lineageos.internal.util.ScreenType;
 
 import static org.lineageos.internal.util.DeviceKeysConstants.*;
 
+import java.io.FileDescriptor;
+import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import lineageos.hardware.LineageHardwareManager;
@@ -96,6 +110,9 @@ public class ButtonSettings extends SettingsPreferenceFragment implements
     private static final String CATEGORY_BACKLIGHT = "key_backlight";
     private static final String CATEGORY_NAVBAR = "navigation_bar_category";
 
+    private static final String FINGERPRINT_CUSTOM_ICON = "custom_fingerprint_icon";
+    private static final int GET_CUSTOM_FP_ICON = 69;
+
     private ListPreference mHomeLongPressAction;
     private ListPreference mHomeDoubleTapAction;
     private ListPreference mMenuPressAction;
@@ -124,6 +141,8 @@ public class ButtonSettings extends SettingsPreferenceFragment implements
     private PreferenceCategory mNavigationPreferencesCat;
 
     private Handler mHandler;
+
+    private Preference mFilePicker;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -469,6 +488,33 @@ public class ButtonSettings extends SettingsPreferenceFragment implements
             mNavigationAppSwitchLongPressAction.setEntries(actionEntriesGo);
             mNavigationAppSwitchLongPressAction.setEntryValues(actionValuesGo);
         }
+
+        mFilePicker = (Preference) findPreference(FINGERPRINT_CUSTOM_ICON);
+
+        boolean isFODDevice = getResources().getBoolean(com.android.internal.R.bool.config_needCustomFODView);
+        if (!isFODDevice){
+            removePreference(FINGERPRINT_CUSTOM_ICON);
+        } else {
+            final String customIconURI = Settings.System.getString(resolver,
+                Settings.System.LINEAGE_CUSTOM_FP_ICON);
+
+            if (!TextUtils.isEmpty(customIconURI)) {
+                setPickerIcon(customIconURI);
+                mFilePicker.setSummary(customIconURI);
+            }
+
+            mFilePicker.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
+                @Override
+                public boolean onPreferenceClick(Preference preference) {
+                    Intent intent = new Intent(Intent.ACTION_PICK);
+                    intent.setType("image/png");
+
+                    startActivityForResult(intent, GET_CUSTOM_FP_ICON);
+
+                    return true;
+                }
+            });
+        }
     }
 
     @Override
@@ -724,5 +770,37 @@ public class ButtonSettings extends SettingsPreferenceFragment implements
                 LineageSettings.Secure.RING_HOME_BUTTON_BEHAVIOR, (mHomeAnswerCall.isChecked()
                         ? LineageSettings.Secure.RING_HOME_BUTTON_BEHAVIOR_ANSWER
                         : LineageSettings.Secure.RING_HOME_BUTTON_BEHAVIOR_DO_NOTHING));
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode,
+        Intent resultData) {
+        if (requestCode == GET_CUSTOM_FP_ICON && resultCode == Activity.RESULT_OK) {
+            Uri uri = null;
+            if (resultData != null) {
+                uri = resultData.getData();
+                mFilePicker.setSummary(uri.toString());
+                setPickerIcon(uri.toString());
+                Settings.System.putString(getContentResolver(), Settings.System.LINEAGE_CUSTOM_FP_ICON,
+                    uri.toString());
+            }
+        } else if (requestCode == GET_CUSTOM_FP_ICON && resultCode == Activity.RESULT_CANCELED) {
+            mFilePicker.setSummary("");
+            mFilePicker.setIcon(new ColorDrawable(Color.TRANSPARENT));
+            Settings.System.putString(getContentResolver(), Settings.System.LINEAGE_CUSTOM_FP_ICON, "");
+        }
+    }
+
+    private void setPickerIcon(String uri) {
+        try {
+                ParcelFileDescriptor parcelFileDescriptor =
+                    getContext().getContentResolver().openFileDescriptor(Uri.parse(uri), "r");
+                FileDescriptor fileDescriptor = parcelFileDescriptor.getFileDescriptor();
+                Bitmap image = BitmapFactory.decodeFileDescriptor(fileDescriptor);
+                parcelFileDescriptor.close();
+                Drawable d = new BitmapDrawable(getResources(), image);
+                mFilePicker.setIcon(d);
+            }
+            catch (Exception e) {}
     }
 }

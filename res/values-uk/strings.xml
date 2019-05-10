@@ -486,4 +486,5 @@
     <string name="touchscreen_gesture_action_play_pause_music">Відтворити або призупинити відтворення музики</string>
     <string name="touchscreen_gesture_action_previous_track">Перейти до попереднього музичного треку</string>
     <string name="touchscreen_gesture_action_next_track">Перехід до наступного музичного треку</string>
+    <string name="custom_fod_icon_title">Встановити значок FOD</string>
 </resources>
